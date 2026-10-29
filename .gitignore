@@ -1,0 +1,9 @@
+*.exe
+*.test
+*.out
+.env
+.env.*
+!.env.example
+.claude/
+_archive_chatgpt/
+.idea/
