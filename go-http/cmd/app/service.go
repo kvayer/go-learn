@@ -1,6 +1,9 @@
 package main
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type UserService struct {
 	repo UserRepository
@@ -13,9 +16,18 @@ func NewUserService(repo UserRepository) *UserService {
 }
 
 func (s *UserService) CreateUser(ctx context.Context, name string, age int) (User, error) {
-	if name == "" || age <= 0 {
-		return User{}, ErrInvalidUserData
+
+	// валидация name и age
+	fe := &FieldError{}
+	if name == "" {
+		fe.Field = "name"
+		return User{}, fmt.Errorf("%w: %w", ErrInvalidUserData, fe)
 	}
+	if age <= 0 {
+		fe.Field = "age"
+		return User{}, fmt.Errorf("%w: %w", ErrInvalidUserData, fe)
+	}
+
 	user, err := s.repo.Create(ctx, name, age)
 	if err != nil {
 		return user, err
@@ -24,9 +36,14 @@ func (s *UserService) CreateUser(ctx context.Context, name string, age int) (Use
 }
 
 func (s *UserService) UpdateUser(ctx context.Context, id int, name string, age int) (User, error) {
-	if name == "" || age <= 0 {
-		return User{}, ErrInvalidUserData
+
+	if name == "" {
+		return User{}, fmt.Errorf("%w: %w", ErrInvalidUserData, &FieldError{Field: "name"})
 	}
+	if age <= 0 {
+		return User{}, fmt.Errorf("%w: %w", ErrInvalidUserData, &FieldError{Field: "age"})
+	}
+
 	user, ok, err := s.repo.Update(ctx, id, name, age)
 	if err != nil {
 		return user, err

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -30,8 +31,9 @@ func (h *UserHandler) Users(w http.ResponseWriter, r *http.Request) {
 
 		user, err := h.service.CreateUser(ctx, input.Name, input.Age)
 		if err != nil {
-			if errors.Is(err, ErrInvalidUserData) {
-				http.Error(w, "400 Bad Request", http.StatusBadRequest)
+			var fe *FieldError
+			if errors.As(err, &fe) {
+				http.Error(w, fmt.Sprintf("400 Bad Request: bad field: %s", fe.Field), http.StatusBadRequest)
 				return
 			}
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -139,10 +141,13 @@ func (h *UserHandler) UsersByID(w http.ResponseWriter, r *http.Request) {
 
 		newUser, err := h.service.UpdateUser(ctx, id, input.Name, input.Age)
 		if err != nil {
-			if errors.Is(err, ErrInvalidUserData) {
-				http.Error(w, "400 Bad Request", http.StatusBadRequest)
+			var fe *FieldError
+			if errors.As(err, &fe) {
+				http.Error(w, fmt.Sprintf("400 Bad Request: bad field: %s", fe.Field), http.StatusBadRequest)
 				return
-			} else if errors.Is(err, ErrUserNotFound) {
+			}
+
+			if errors.Is(err, ErrUserNotFound) {
 				http.Error(w, "404 Not Found", http.StatusNotFound)
 				return
 			}

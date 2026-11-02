@@ -64,7 +64,7 @@ func TestUserHandler_Users_POST_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestUserHandler_Users_POST_InvalidUserData(t *testing.T) {
+func TestUserHandler_Users_POST_InvalidUserData_Age(t *testing.T) {
 	body := strings.NewReader(`{"name": "Mike","age": 0}`)
 	request := httptest.NewRequest(http.MethodPost, "/users", body)
 	recorder := httptest.NewRecorder()
@@ -78,7 +78,51 @@ func TestUserHandler_Users_POST_InvalidUserData(t *testing.T) {
 	}
 
 	gotBody := recorder.Body.String()
-	expectedBody := "400 Bad Request\n"
+	expectedBody := "400 Bad Request: bad field: age\n"
+
+	if gotBody != expectedBody {
+		t.Fatalf("expected body: %s, got: %s", expectedBody, gotBody)
+	}
+
+}
+
+func TestUserHandler_Users_POST_InvalidUserData_Name(t *testing.T) {
+	body := strings.NewReader(`{"name": "","age": 21}`)
+	request := httptest.NewRequest(http.MethodPost, "/users", body)
+	recorder := httptest.NewRecorder()
+
+	repo := stubUserRepository{}
+	service := NewUserService(&repo)
+	handler := NewUserHandler(service)
+	handler.Users(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
+	}
+
+	gotBody := recorder.Body.String()
+	expectedBody := "400 Bad Request: bad field: name\n"
+
+	if gotBody != expectedBody {
+		t.Fatalf("expected body: %s, got: %s", expectedBody, gotBody)
+	}
+
+}
+
+func TestUserHandler_Users_POST_InvalidUserData(t *testing.T) {
+	body := strings.NewReader(`{"name": "","age": 0}`)
+	request := httptest.NewRequest(http.MethodPost, "/users", body)
+	recorder := httptest.NewRecorder()
+
+	repo := stubUserRepository{}
+	service := NewUserService(&repo)
+	handler := NewUserHandler(service)
+	handler.Users(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
+	}
+
+	gotBody := recorder.Body.String()
+	expectedBody := "400 Bad Request: bad field: name\n"
 
 	if gotBody != expectedBody {
 		t.Fatalf("expected body: %s, got: %s", expectedBody, gotBody)
@@ -418,7 +462,7 @@ func TestUserHandler_UsersByID_PUT_InvalidUserData_EmptyObject(t *testing.T) {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
 	}
 	gotBody := recorder.Body.String()
-	expectedBody := "400 Bad Request\n"
+	expectedBody := "400 Bad Request: bad field: name\n"
 	if gotBody != expectedBody {
 		t.Fatalf("expected: %v, got: %v", expectedBody, gotBody)
 	}
@@ -439,7 +483,7 @@ func TestUserHandler_UsersByID_PUT_InvalidUserData_MissingAge(t *testing.T) {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
 	}
 	gotBody := recorder.Body.String()
-	expectedBody := "400 Bad Request\n"
+	expectedBody := "400 Bad Request: bad field: age\n"
 	if gotBody != expectedBody {
 		t.Fatalf("expected: %v, got: %v", expectedBody, gotBody)
 	}
@@ -523,7 +567,7 @@ func TestUserHandler_UsersByID_PUT_InvalidName(t *testing.T) {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
 	}
 	gotBody := recorder.Body.String()
-	expectedBody := "400 Bad Request\n"
+	expectedBody := "400 Bad Request: bad field: name\n"
 	if gotBody != expectedBody {
 		t.Fatalf("expected: %v, got: %v", expectedBody, gotBody)
 	}
@@ -544,7 +588,7 @@ func TestUserHandler_UsersByID_PUT_InvalidAge(t *testing.T) {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
 	}
 	gotBody := recorder.Body.String()
-	expectedBody := "400 Bad Request\n"
+	expectedBody := "400 Bad Request: bad field: age\n"
 	if gotBody != expectedBody {
 		t.Fatalf("expected: %v, got: %v", expectedBody, gotBody)
 	}
@@ -565,7 +609,7 @@ func TestUserHandler_UsersByID_PUT_InvalidNameAndAge(t *testing.T) {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
 	}
 	gotBody := recorder.Body.String()
-	expectedBody := "400 Bad Request\n"
+	expectedBody := "400 Bad Request: bad field: name\n"
 	if gotBody != expectedBody {
 		t.Fatalf("expected: %v, got: %v", expectedBody, gotBody)
 	}
