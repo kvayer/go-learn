@@ -1,13 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 )
+
+func createHandler(repo *stubUserRepository) (*bytes.Buffer, *slog.Logger, *UserHandler) {
+	service := NewUserService(repo)
+	var bufLogger bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&bufLogger, nil))
+	handler := NewUserHandler(service, logger)
+	return &bufLogger, logger, handler
+}
 
 func TestUserHandler_Users_POST_Success(t *testing.T) {
 	body := strings.NewReader(`{"name":"Mike","age":22}`)
@@ -16,8 +26,7 @@ func TestUserHandler_Users_POST_Success(t *testing.T) {
 
 	expectedUser := User{ID: 42, Name: "Mike", Age: 22}
 	repo := stubUserRepository{createUser: expectedUser}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 	handler.Users(recorder, request)
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("expected status: %d, got: %d", http.StatusCreated, recorder.Code)
@@ -50,8 +59,7 @@ func TestUserHandler_Users_POST_InvalidJSON(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 	handler.Users(recorder, request)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
@@ -70,8 +78,7 @@ func TestUserHandler_Users_POST_InvalidUserData_Age(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 	handler.Users(recorder, request)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
@@ -92,8 +99,7 @@ func TestUserHandler_Users_POST_InvalidUserData_Name(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 	handler.Users(recorder, request)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
@@ -114,8 +120,7 @@ func TestUserHandler_Users_POST_InvalidUserData(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 	handler.Users(recorder, request)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected: %d, got: %d", http.StatusBadRequest, recorder.Code)
@@ -138,8 +143,7 @@ func TestUserHandler_Users_POST_RepositoryError(t *testing.T) {
 	repo := stubUserRepository{
 		createErr: errRepository,
 	}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 	handler.Users(recorder, request)
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("expected: %d, got: %d", http.StatusInternalServerError, recorder.Code)
@@ -159,8 +163,7 @@ func TestUserHandler_Users_GET_Success(t *testing.T) {
 	expectedUsers := []User{{ID: 42, Name: "Mike", Age: 22}, {ID: 98, Name: "Anna", Age: 24}}
 
 	repo := stubUserRepository{getAllUsers: expectedUsers}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 	handler.Users(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected: %d, got: %d", http.StatusOK, recorder.Code)
@@ -184,8 +187,7 @@ func TestUserHandler_Users_GET_RepositoryError(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{getAllErr: errRepository}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 	handler.Users(recorder, request)
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("expected: %d, got: %d", http.StatusInternalServerError, recorder.Code)
@@ -202,8 +204,7 @@ func TestUserHandler_UsersByID_GET_RepositoryError(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{getByIDErr: errRepository}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "42")
 	handler.UsersByID(recorder, request)
@@ -217,13 +218,34 @@ func TestUserHandler_UsersByID_GET_RepositoryError(t *testing.T) {
 	}
 }
 
+func TestUserHandler_UsersByID_GET_RepositoryError_Logger(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/users/42", nil)
+	recorder := httptest.NewRecorder()
+
+	repo := stubUserRepository{getByIDErr: errRepository}
+	bufLogger, _, handler := createHandler(&repo)
+	request.SetPathValue("id", "42")
+	handler.UsersByID(recorder, request)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected: %d, got: %d", http.StatusInternalServerError, recorder.Code)
+	}
+	gotBody := recorder.Body.String()
+	expectedBody := "500 Internal Server Error\n"
+	if gotBody != expectedBody {
+		t.Fatalf("expected: %v, got: %v", expectedBody, gotBody)
+	}
+	log := bufLogger.String()
+	if !strings.Contains(log, "Get user failed") || !strings.Contains(log, errRepository.Error()) {
+		t.Fatalf("expected log message, got: %s", log)
+	}
+}
+
 func TestUserHandler_UsersByID_GET_NotFound(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/users/42", nil)
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "42")
 	handler.UsersByID(recorder, request)
@@ -243,8 +265,7 @@ func TestUserHandler_UsersByID_GET_Success(t *testing.T) {
 
 	expectedUser := User{ID: 44, Name: "Mike", Age: 22}
 	repo := stubUserRepository{getByIDOK: true, getByIDUser: expectedUser}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -270,8 +291,7 @@ func TestUserHandler_UsersByID_GET_InvalidID_Zero(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "0")
 	handler.UsersByID(recorder, request)
@@ -290,8 +310,7 @@ func TestUserHandler_UsersByID_GET_InvalidID_NotNumber(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "rgf")
 	handler.UsersByID(recorder, request)
@@ -310,8 +329,7 @@ func TestUserHandler_UsersByID_DELETE_InvalidID_Zero(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "0")
 	handler.UsersByID(recorder, request)
@@ -330,8 +348,7 @@ func TestUserHandler_UsersByID_DELETE_InvalidID_NotNumber(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "sdfg")
 	handler.UsersByID(recorder, request)
@@ -350,8 +367,7 @@ func TestUserHandler_UsersByID_DELETE_NotFound(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -370,8 +386,7 @@ func TestUserHandler_UsersByID_DELETE_RepositoryError(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{deleteErr: errRepository}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -390,8 +405,7 @@ func TestUserHandler_UsersByID_DELETE_Success(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{deleteOK: true}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -411,8 +425,7 @@ func TestUserHandler_UsersByID_PUT_RepositoryError(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{updateErr: errRepository}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -432,8 +445,7 @@ func TestUserHandler_UsersByID_PUT_InvalidJSON(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -453,8 +465,7 @@ func TestUserHandler_UsersByID_PUT_InvalidUserData_EmptyObject(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -474,8 +485,7 @@ func TestUserHandler_UsersByID_PUT_InvalidUserData_MissingAge(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -495,8 +505,7 @@ func TestUserHandler_UsersByID_PUT_InvalidID_Zero(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "0")
 	handler.UsersByID(recorder, request)
@@ -516,8 +525,7 @@ func TestUserHandler_UsersByID_PUT_InvalidID_NotNumber(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "fdsg")
 	handler.UsersByID(recorder, request)
@@ -537,8 +545,7 @@ func TestUserHandler_UsersByID_PUT_NotFound(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -558,8 +565,7 @@ func TestUserHandler_UsersByID_PUT_InvalidName(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -579,8 +585,7 @@ func TestUserHandler_UsersByID_PUT_InvalidAge(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -600,8 +605,7 @@ func TestUserHandler_UsersByID_PUT_InvalidNameAndAge(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	repo := stubUserRepository{}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -622,8 +626,7 @@ func TestUserHandler_UsersByID_PUT_Success(t *testing.T) {
 
 	expectedUser := User{ID: 44, Name: "Mike", Age: 22}
 	repo := stubUserRepository{updateUser: expectedUser, updateOK: true}
-	service := NewUserService(&repo)
-	handler := NewUserHandler(service)
+	_, _, handler := createHandler(&repo)
 
 	request.SetPathValue("id", "44")
 	handler.UsersByID(recorder, request)
@@ -651,7 +654,9 @@ func TestRouter_UsersByID_GET_Success(t *testing.T) {
 
 	repo := NewMemoryUserRepository()
 	service := NewUserService(repo)
-	handler := NewUserHandler(service)
+	var bufLogger bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&bufLogger, nil))
+	handler := NewUserHandler(service, logger)
 
 	mux := NewRouter(handler)
 	mux.ServeHTTP(recorder, request)
@@ -691,7 +696,9 @@ func TestRouter_UsersByID_GET_Success(t *testing.T) {
 func TestHTTP_Users_POST_Success(t *testing.T) {
 	repo := NewMemoryUserRepository()
 	service := NewUserService(repo)
-	handler := NewUserHandler(service)
+	var bufLogger bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&bufLogger, nil))
+	handler := NewUserHandler(service, logger)
 	mux := NewRouter(handler)
 
 	server := httptest.NewServer(mux)

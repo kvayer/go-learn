@@ -30,7 +30,7 @@ func (s *UserService) CreateUser(ctx context.Context, name string, age int) (Use
 
 	user, err := s.repo.Create(ctx, name, age)
 	if err != nil {
-		return user, err
+		return user, fmt.Errorf("CreateUser: %w", err)
 	}
 	return user, nil
 }
@@ -46,7 +46,7 @@ func (s *UserService) UpdateUser(ctx context.Context, id int, name string, age i
 
 	user, ok, err := s.repo.Update(ctx, id, name, age)
 	if err != nil {
-		return user, err
+		return user, fmt.Errorf("UpdateUser: %w", err)
 	}
 	if !ok {
 		return user, ErrUserNotFound
@@ -57,7 +57,7 @@ func (s *UserService) UpdateUser(ctx context.Context, id int, name string, age i
 func (s *UserService) GetUserByID(ctx context.Context, id int) (User, error) {
 	user, ok, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return User{}, err
+		return User{}, fmt.Errorf("GetUserByID: %w", err)
 	}
 	if !ok {
 		return User{}, ErrUserNotFound
@@ -68,7 +68,7 @@ func (s *UserService) GetUserByID(ctx context.Context, id int) (User, error) {
 func (s *UserService) DeleteUser(ctx context.Context, id int) error {
 	ok, err := s.repo.Delete(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("DeleteUser: %w", err)
 	}
 	if !ok {
 		return ErrUserNotFound
@@ -79,7 +79,7 @@ func (s *UserService) DeleteUser(ctx context.Context, id int) error {
 func (s *UserService) GetAllUsers(ctx context.Context) ([]User, error) {
 	users, err := s.repo.GetAll(ctx)
 	if err != nil {
-		return users, err
+		return users, fmt.Errorf("GetAllUsers: %w", err)
 	}
 	return users, nil
 }

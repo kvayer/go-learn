@@ -1,20 +1,27 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 )
+
+const waitingTime = 2 * time.Second
 
 type UserHandler struct {
 	service *UserService
+	logger  *slog.Logger
 }
 
-func NewUserHandler(service *UserService) *UserHandler {
+func NewUserHandler(service *UserService, logger *slog.Logger) *UserHandler {
 	return &UserHandler{
 		service: service,
+		logger:  logger,
 	}
 }
 
@@ -36,6 +43,7 @@ func (h *UserHandler) Users(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, fmt.Sprintf("400 Bad Request: bad field: %s", fe.Field), http.StatusBadRequest)
 				return
 			}
+			h.logger.Error("Create user failed", "method", r.Method, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -44,6 +52,7 @@ func (h *UserHandler) Users(w http.ResponseWriter, r *http.Request) {
 
 		data, err := json.Marshal(output)
 		if err != nil {
+			h.logger.Error("Create user failed: json.Marshal", "method", r.Method, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -56,12 +65,14 @@ func (h *UserHandler) Users(w http.ResponseWriter, r *http.Request) {
 
 		usersCopy, err := h.service.GetAllUsers(ctx)
 		if err != nil {
+			h.logger.Error("Get all users failed", "method", r.Method, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		data, err := json.Marshal(usersCopy)
 		if err != nil {
+			h.logger.Error("Get all users failed: json.Marshal", "method", r.Method, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -76,7 +87,6 @@ func (h *UserHandler) UsersByID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	switch r.Method {
 	case http.MethodGet:
-
 		idString := r.PathValue("id")
 		id, err := strconv.Atoi(idString)
 		if err != nil || id <= 0 {
@@ -84,18 +94,30 @@ func (h *UserHandler) UsersByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		ctx, cancel := context.WithTimeout(ctx, waitingTime)
+		defer cancel()
 		outputUser, err := h.service.GetUserByID(ctx, id)
 		if err != nil {
-			if errors.Is(err, ErrUserNotFound) {
+			switch {
+			case errors.Is(err, context.Canceled):
+				h.logger.Info("client went away")
+				return
+			case errors.Is(err, context.DeadlineExceeded):
+				h.logger.Warn("request timed out", "err", err)
+				http.Error(w, "503 Service Unavailable", http.StatusServiceUnavailable)
+				return
+			case errors.Is(err, ErrUserNotFound):
 				http.Error(w, "404 Not Found", http.StatusNotFound)
 				return
 			}
+			h.logger.Error("Get user failed", "method", r.Method, "user_id", id, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		data, err := json.Marshal(outputUser)
 		if err != nil {
+			h.logger.Error("Get user failed: json.Marshal", "method", r.Method, "user_id", id, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -118,6 +140,7 @@ func (h *UserHandler) UsersByID(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "404 Not Found", http.StatusNotFound)
 				return
 			}
+			h.logger.Error("Delete user failed", "method", r.Method, "user_id", id, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -151,6 +174,7 @@ func (h *UserHandler) UsersByID(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "404 Not Found", http.StatusNotFound)
 				return
 			}
+			h.logger.Error("Put user failed", "method", r.Method, "user_id", id, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -159,6 +183,7 @@ func (h *UserHandler) UsersByID(w http.ResponseWriter, r *http.Request) {
 
 		data, err := json.Marshal(output)
 		if err != nil {
+			h.logger.Error("Put user failed: json.Marshal", "method", r.Method, "user_id", id, "error", err)
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}

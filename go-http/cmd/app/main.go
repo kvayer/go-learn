@@ -1,14 +1,17 @@
 package main
 
 import (
+	"log/slog"
 	"net/http"
+	"os"
 )
 
 func main() {
 
 	repo := NewMemoryUserRepository()
 	service := NewUserService(repo)
-	handler := NewUserHandler(service)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	handler := NewUserHandler(service, logger)
 
 	mux := NewRouter(handler)
 
